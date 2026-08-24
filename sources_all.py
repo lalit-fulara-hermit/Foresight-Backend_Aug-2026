@@ -71,16 +71,26 @@ def fetch_arxiv(query, limit=10):
     return out
 
 
+def _junk_title(t):
+    """Filter stub/junk titles that pollute the queue."""
+    t = (t or "").strip()
+    if len(t) < 8:
+        return True
+    low = t.lower()
+    return low.startswith(("title pending", "untitled", "no title"))
+
+
 @_safe("crossref")
 def fetch_crossref(query, limit=10):
     r = _get(
         "https://api.crossref.org/works",
-        params={"query": query, "rows": limit, "sort": "published", "order": "desc"},
+        params={"query.bibliographic": f'"{query}"', "rows": limit,
+                "sort": "published", "order": "desc"},
     )
     out = []
     for w in r.json().get("message", {}).get("items", []):
         title = (w.get("title") or [""])[0]
-        if not title:
+        if _junk_title(title):
             continue
         out.append({
             "source": "crossref",
@@ -103,6 +113,8 @@ def fetch_openalex(query, limit=10):
     )
     out = []
     for w in r.json().get("results", []):
+        if _junk_title(w.get("display_name", "")):
+            continue
         out.append({
             "source": "openalex",
             "source_id": w.get("id", "").rsplit("/", 1)[-1],
