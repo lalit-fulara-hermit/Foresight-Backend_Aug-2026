@@ -31,15 +31,16 @@ DEFAULT_CONFIG = {
         "- weak: {rule_weak}\n"
         "- building: {rule_building}\n"
         "- established: {rule_established}\n\n"
-        "Then suggest one concrete IEC action. An IEC action names a committee, "
-        "working group, or process step (e.g. 'Refer to TC 57 for grid "
-        "interoperability review', 'Propose a new work item on X', 'Monitor and "
-        "revisit in 6 months'). Be specific but honest: if the signal is weak, "
-        "the action can be to monitor.\n\n"
+        "Then suggest one concrete IEC action. Name a committee or process step "
+        "(e.g. 'Refer to TC 57', 'Propose a new work item on X', 'Monitor, "
+        "revisit in 6 months'). If the signal is weak, monitoring is a valid action.\n\n"
+        "Write in plain business English. Keep the action under 18 words. "
+        "Keep the reasoning to two short sentences. No jargon, no filler, "
+        "no words like 'landscape', 'ecosystem', 'leverage' or 'holistic'.\n\n"
         "Respond ONLY with JSON, no markdown fences:\n"
         '{{"classification": "weak|building|established", '
-        '"action": "one sentence", '
-        '"reasoning": "2-3 sentences explaining the classification and the action"}}'
+        '"action": "one short sentence, under 18 words", '
+        '"reasoning": "two short sentences"}}'
     ),
 }
 
