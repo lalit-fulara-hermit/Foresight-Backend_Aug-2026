@@ -87,10 +87,7 @@ def fetch(body: FetchBody, request: Request):
             sig = store.get_signal(sid)
             try:
                 res = reasoning.reason(sig, cfg)
-                store.set_reasoning(
-                    sid, res["classification"], res["action"],
-                    res["reasoning"], res["model"],
-                )
+                store.set_reasoning(sid, res)
                 reasoned += 1
             except Exception as e:
                 reason_errors[sid] = str(e)[:200]
@@ -166,9 +163,7 @@ def rerun(signal_id: str, request: Request):
     if not sig:
         raise HTTPException(404, "signal not found")
     res = reasoning.reason(sig)
-    store.set_reasoning(
-        signal_id, res["classification"], res["action"], res["reasoning"], res["model"]
-    )
+    store.set_reasoning(signal_id, res)
     return {"signal": store.get_signal(signal_id)}
 
 

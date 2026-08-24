@@ -45,6 +45,10 @@ def init():
                 raw_item_ids TEXT NOT NULL,   -- JSON list
                 status TEXT NOT NULL DEFAULT 'draft',  -- draft|published|rejected
                 classification TEXT,          -- weak|building|established
+                lens TEXT,                    -- tech|market|reg|geo
+                committee TEXT,               -- e.g. TC 65, or none
+                finding TEXT,                 -- one-sentence summary of the source
+                horizon TEXT,                 -- revisit timeframe
                 action TEXT,                  -- suggested IEC action
                 reasoning TEXT,               -- verbatim AI reasoning
                 model TEXT,                   -- which model produced it
@@ -109,12 +113,14 @@ def add_signal(title, summary, source, source_url, raw_item_ids):
     return sid
 
 
-def set_reasoning(signal_id, classification, action, reasoning, model):
+def set_reasoning(signal_id, res):
     with db() as conn:
         conn.execute(
-            "UPDATE signals SET classification=?, action=?, reasoning=?, model=?, "
-            "reasoned_at=? WHERE id=?",
-            (classification, action, reasoning, model, now_iso(), signal_id),
+            "UPDATE signals SET classification=?, lens=?, committee=?, finding=?, "
+            "horizon=?, action=?, reasoning=?, model=?, reasoned_at=? WHERE id=?",
+            (res.get("classification"), res.get("lens"), res.get("committee"),
+             res.get("finding"), res.get("horizon"), res.get("action"),
+             res.get("reasoning"), res.get("model"), now_iso(), signal_id),
         )
 
 
@@ -153,7 +159,7 @@ def review(signal_id, decision, reviewer, edits=None):
         return None
     with db() as conn:
         if edits:
-            allowed = {"title", "summary", "classification", "action"}
+            allowed = {"title", "summary", "classification", "action", "horizon", "committee", "lens"}
             for k, v in edits.items():
                 if k in allowed:
                     conn.execute(f"UPDATE signals SET {k}=? WHERE id=?", (v, signal_id))

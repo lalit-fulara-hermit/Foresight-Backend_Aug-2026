@@ -31,16 +31,20 @@ DEFAULT_CONFIG = {
         "- weak: {rule_weak}\n"
         "- building: {rule_building}\n"
         "- established: {rule_established}\n\n"
-        "Then suggest one concrete IEC action. Name a committee or process step "
-        "(e.g. 'Refer to TC 57', 'Propose a new work item on X', 'Monitor, "
-        "revisit in 6 months'). If the signal is weak, monitoring is a valid action.\n\n"
-        "Write in plain business English. Keep the action under 18 words. "
-        "Keep the reasoning to two short sentences. No jargon, no filler, "
-        "no words like 'landscape', 'ecosystem', 'leverage' or 'holistic'.\n\n"
+        "Then extract these fields. Write in plain business English, no jargon.\n"
+        "- lens: which of the four lenses this signal belongs to: "
+        "tech (technology), market, reg (regulatory), geo (geopolitical).\n"
+        "- committee: the single most relevant IEC committee, e.g. 'TC 65', "
+        "'SC 62A', 'SyC AI'. If none fits, write 'none'.\n"
+        "- finding: one plain sentence: what does the source actually report?\n"
+        "- horizon: when to revisit: '3 months', '6 months', '12 months', or 'none' "
+        "if immediate referral is warranted.\n"
+        "- action: one short sentence, under 15 words, the suggested IEC step.\n"
+        "- reasoning: two short sentences explaining the label and the action.\n\n"
         "Respond ONLY with JSON, no markdown fences:\n"
-        '{{"classification": "weak|building|established", '
-        '"action": "one short sentence, under 18 words", '
-        '"reasoning": "two short sentences"}}'
+        '{{"classification": "weak|building|established", "lens": "tech|market|reg|geo", '
+        '"committee": "...", "finding": "...", "horizon": "...", '
+        '"action": "...", "reasoning": "..."}}'
     ),
 }
 
@@ -102,6 +106,10 @@ def reason(signal, cfg=None):
     parsed = json.loads(clean)
     return {
         "classification": parsed.get("classification", "weak"),
+        "lens": parsed.get("lens", ""),
+        "committee": parsed.get("committee", ""),
+        "finding": parsed.get("finding", ""),
+        "horizon": parsed.get("horizon", ""),
         "action": parsed.get("action", ""),
         "reasoning": parsed.get("reasoning", ""),
         "model": cfg["model"],
