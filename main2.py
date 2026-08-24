@@ -178,6 +178,8 @@ class ReviewBody(BaseModel):
     decision: str
     reviewer: str
     edits: dict | None = None
+    reason_category: str = ""
+    reason_note: str = ""
 
 
 @app.post("/review")
@@ -187,7 +189,10 @@ def review(body: ReviewBody, req: Request):
         raise HTTPException(400, "decision must be approve or reject")
     if not body.reviewer.strip():
         raise HTTPException(400, "reviewer name required; decisions are logged")
-    out = store.review(body.item_id, body.decision, body.reviewer, body.edits)
+    if body.decision == "reject" and not body.reason_category:
+        raise HTTPException(400, "rejection reason required (learning loop)")
+    out = store.review(body.item_id, body.decision, body.reviewer, body.edits,
+                       body.reason_category, body.reason_note)
     if not out:
         raise HTTPException(404, "item not found or not a draft")
     return {"item": out}
@@ -268,6 +273,89 @@ def rerun(item_id: str, req: Request):
                  action_type=atype, action_text=a["action_text"], horizon=hz,
                  reasoning=a["reasoning"], reasoned_at=store.now())
     return {"item": store.get(item_id)}
+
+
+class AnnotateBody(BaseModel):
+    item_id: str
+    reviewer: str
+    human_summary: str | None = None
+    human_note: str | None = None
+
+
+@app.post("/annotate")
+def annotate(body: AnnotateBody, req: Request):
+    auth(req)
+    if not body.reviewer.strip():
+        raise HTTPException(400, "reviewer name required")
+    out = store.annotate(body.item_id, body.reviewer, body.human_summary,
+                         body.human_note)
+    if not out:
+        raise HTTPException(404, "not found")
+    return {"item": out}
+
+
+class RestoreBody(BaseModel):
+    item_id: str
+    reviewer: str
+    corrections: dict | None = None
+
+
+@app.post("/restore")
+def restore(body: RestoreBody, req: Request):
+    auth(req)
+    out = store.restore(body.item_id, body.reviewer, body.corrections)
+    if not out:
+        raise HTTPException(404, "not a rejected item")
+    return {"item": out}
+
+
+class DeleteBody(BaseModel):
+    item_id: str
+    reviewer: str
+
+
+@app.post("/delete")
+def delete(body: DeleteBody, req: Request):
+    auth(req)
+    if not store.delete_item(body.item_id, body.reviewer):
+        raise HTTPException(404, "not a rejected item")
+    return {"ok": True}
+
+
+class AskBody(BaseModel):
+    question: str
+
+
+@app.post("/ask")
+def ask(body: AskBody, req: Request):
+    auth(req)
+    rules = ai.load_rules()
+    ctx = {
+        "drafts": [{k: d.get(k) for k in ("title", "label", "committee_label",
+                    "action_type", "action_text", "synopsis", "rel_reason")}
+                   for d in store.list_by_status("draft", 40)],
+        "published": [{k: d.get(k) for k in ("title", "label", "committee_label",
+                       "action_type", "action_text", "human_summary", "human_note")}
+                      for d in store.list_by_status("published", 40)],
+        "rejected": [{k: d.get(k) for k in ("title", "gate", "gate_reason")}
+                     for d in store.list_by_status("rejected", 40)],
+        "accuracy": store.accuracy(),
+        "rules": {"relevance_test": rules["relevance_test"],
+                  "labels": rules["labels"]},
+    }
+    prompt = (
+        "You are the workspace assistant of Foresight, a market intelligence "
+        "tool for the IEC Market Strategy Board. Answer ONLY from the workspace "
+        "data below. Plain business English, short answers. If the data does "
+        "not contain the answer, say so plainly.\n\nWorkspace data:\n"
+        + json.dumps(ctx) + "\n\nQuestion: " + body.question[:500]
+        + "\n\nRespond ONLY with JSON, no fences: {\"answer\": \"...\"}"
+    )
+    try:
+        out = ai._call(prompt, rules["model"], 500)
+        return {"answer": str(out.get("answer", ""))[:1500]}
+    except Exception as e:
+        raise HTTPException(502, f"assistant unavailable: {e}")
 
 
 @app.get("/committees")

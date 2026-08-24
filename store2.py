@@ -41,13 +41,14 @@ def init():
             label TEXT, label_basis TEXT,
             action_type TEXT, action_text TEXT, horizon TEXT,
             reasoning TEXT, model TEXT, reasoned_at TEXT,
+            human_summary TEXT, human_note TEXT, annotated_by TEXT, annotated_at TEXT,
             prio REAL, prio_rel REAL, prio_fresh REAL, prio_corr REAL
         );
         CREATE TABLE IF NOT EXISTS decisions (
             id TEXT PRIMARY KEY, item_id TEXT, decision TEXT, reviewer TEXT,
-            machine_proposal TEXT,           -- JSON snapshot before edits
-            human_final TEXT,                -- JSON after edits
-            changed_fields TEXT,             -- JSON list of edited field names
+            machine_proposal TEXT, human_final TEXT, changed_fields TEXT,
+            reason_category TEXT,            -- reject feedback for the learning loop
+            reason_note TEXT,
             decided_at TEXT
         );
         CREATE TABLE IF NOT EXISTS action_status (
@@ -113,14 +114,14 @@ def list_by_status(status, limit=300):
     return [dict(r) for r in rows]
 
 
-def review(item_id, decision, reviewer, edits):
+def review(item_id, decision, reviewer, edits, reason_category="", reason_note=""):
     it = get(item_id)
     if not it or it["status"] != "draft":
         return None
     machine = {k: it[k] for k in ("action_type", "action_text", "committee_key",
                                   "committee_label", "horizon", "label")}
     allowed = {"action_type", "action_text", "committee_key", "committee_label",
-               "horizon", "label"}
+               "horizon", "label", "human_summary", "human_note"}
     changed = []
     for k, v in (edits or {}).items():
         if k in allowed and v is not None and v != it.get(k):
@@ -133,16 +134,61 @@ def review(item_id, decision, reviewer, edits):
         update(item_id, status="published")
     it2 = get(item_id)
     human = {k: it2[k] for k in machine}
+    if changed and any(k in ("human_summary", "human_note") for k in changed):
+        update(item_id, annotated_by=reviewer, annotated_at=now())
     did = "dec_" + uuid.uuid4().hex[:10]
     with db() as c:
-        c.execute("INSERT INTO decisions VALUES (?,?,?,?,?,?,?,?)",
+        c.execute("INSERT INTO decisions VALUES (?,?,?,?,?,?,?,?,?,?)",
                   (did, item_id, decision, reviewer, json.dumps(machine),
-                   json.dumps(human), json.dumps(changed), now()))
+                   json.dumps(human), json.dumps(changed),
+                   reason_category or "", reason_note or "", now()))
         if decision == "approve":
             st = "scheduled" if it2["action_type"] == "monitor" else "new"
             c.execute("INSERT OR REPLACE INTO action_status VALUES (?,?,?,?)",
                       (item_id, st, "", now()))
     return it2
+
+
+def annotate(item_id, reviewer, human_summary=None, human_note=None):
+    fields = {"annotated_by": reviewer, "annotated_at": now()}
+    if human_summary is not None:
+        fields["human_summary"] = human_summary
+    if human_note is not None:
+        fields["human_note"] = human_note
+    update(item_id, **fields)
+    return get(item_id)
+
+
+def restore(item_id, reviewer, corrections=None):
+    it = get(item_id)
+    if not it or it["status"] != "rejected":
+        return None
+    allowed = {"action_type", "action_text", "committee_key", "committee_label",
+               "horizon", "label", "title", "summary"}
+    for k, v in (corrections or {}).items():
+        if k in allowed and v is not None:
+            update(item_id, **{k: v})
+    update(item_id, status="draft", gate=None,
+           gate_reason=f"restored by {reviewer}")
+    did = "dec_" + uuid.uuid4().hex[:10]
+    with db() as c:
+        c.execute("INSERT INTO decisions VALUES (?,?,?,?,?,?,?,?,?,?)",
+                  (did, item_id, "restore", reviewer, "{}", "{}",
+                   json.dumps(list((corrections or {}).keys())), "", "", now()))
+    return get(item_id)
+
+
+def delete_item(item_id, reviewer):
+    it = get(item_id)
+    if not it or it["status"] != "rejected":
+        return None
+    update(item_id, status="deleted", title="[deleted]", summary="", url="",
+           synopsis="", gate_reason=f"deleted by {reviewer} (stub kept for audit)")
+    did = "dec_" + uuid.uuid4().hex[:10]
+    with db() as c:
+        c.execute("INSERT INTO decisions VALUES (?,?,?,?,?,?,?,?,?,?)",
+                  (did, item_id, "delete", reviewer, "{}", "{}", "[]", "", "", now()))
+    return True
 
 
 def set_action_status(item_id, status, owner):
