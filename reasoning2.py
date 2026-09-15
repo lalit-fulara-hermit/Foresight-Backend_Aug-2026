@@ -10,7 +10,7 @@ import httpx
 RULES_PATH = "rules.json"
 
 DEFAULT_RULES = {
-    "model": "claude-sonnet-4-6",
+    "model": "claude-sonnet-5",
     "relevance_test": (
         "IEC covers electrical, electronic and related information technologies: "
         "their research, products, markets, safety, regulation, conformity "
